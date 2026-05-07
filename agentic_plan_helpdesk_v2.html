@@ -1,0 +1,159 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+:root{--r:6px;--gap:10px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.wrap{padding:16px 0}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{font-size:12px;padding:4px 10px;border-radius:99px;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);cursor:pointer;transition:all .15s}
+.filter-btn.active{background:var(--color-background-tertiary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.phase{margin-bottom:20px}
+.phase-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.phase-label{font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;letter-spacing:.04em}
+.phase-title{font-size:14px;font-weight:500;color:var(--color-text-primary)}
+.phase-count{font-size:12px;color:var(--color-text-tertiary);margin-left:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--gap)}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px;cursor:pointer;transition:border-color .15s}
+.card:hover{border-color:var(--color-border-secondary)}
+.card.hidden{display:none}
+.card-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+.card-id{font-size:11px;font-weight:500;color:var(--color-text-tertiary);white-space:nowrap;padding-top:1px}
+.card-title{font-size:13px;font-weight:500;color:var(--color-text-primary);flex:1;line-height:1.4}
+.pri-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.card-body{font-size:12px;color:var(--color-text-secondary);line-height:1.6;margin-bottom:10px}
+.card-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.tag{font-size:11px;padding:2px 7px;border-radius:99px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);font-family:var(--font-mono)}
+.card-files{margin-top:8px}
+.files-label{font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px}
+.file{font-size:11px;font-family:var(--font-mono);color:var(--color-text-info);line-height:1.8}
+.card-detail{display:none;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)}
+.card.open .card-detail{display:block}
+.detail-section{margin-bottom:10px}
+.detail-label{font-size:11px;font-weight:500;color:var(--color-text-tertiary);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em}
+.detail-text{font-size:12px;color:var(--color-text-secondary);line-height:1.7}
+.criteria{list-style:none}
+.criteria li{font-size:12px;color:var(--color-text-secondary);line-height:1.7;padding-left:14px;position:relative}
+.criteria li::before{content:"✓";position:absolute;left:0;color:var(--color-text-success);font-size:10px;top:1px}
+.dep-tags{display:flex;flex-wrap:wrap;gap:4px}
+.dep{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--color-background-warning);color:var(--color-text-warning);border:0.5px solid var(--color-border-warning)}
+.expand-hint{font-size:11px;color:var(--color-text-tertiary);text-align:right;margin-top:4px}
+.p1{background:var(--color-background-danger);color:var(--color-text-danger)}
+.p2{background:var(--color-background-warning);color:var(--color-text-warning)}
+.p3{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.p4{background:var(--color-background-success);color:var(--color-text-success)}
+.dot1{background:var(--color-text-danger)}
+.dot2{background:var(--color-text-warning)}
+.dot3{background:var(--color-border-primary)}
+.dot4{background:var(--color-text-success)}
+</style>
+<h2 class="sr-only">Plano de melhorias agênticas para o Helpdesk TI v2 — 20 tarefas em 4 fases de execução</h2>
+<div class="wrap">
+<div class="toolbar">
+  <span style="font-size:12px;color:var(--color-text-tertiary);margin-right:4px">filtrar:</span>
+  <button class="filter-btn active" onclick="filter('all',this)">todas (20)</button>
+  <button class="filter-btn" onclick="filter('p1',this)">🔴 crítico</button>
+  <button class="filter-btn" onclick="filter('p2',this)">🟠 arquitetura</button>
+  <button class="filter-btn" onclick="filter('p3',this)">🟡 performance</button>
+  <button class="filter-btn" onclick="filter('p4',this)">🟢 ux</button>
+</div>
+<div id="phases"></div>
+</div>
+<script>
+const phases=[
+{id:"p1",label:"Fase 1 — Bugs críticos",color:"p1",tasks:[
+{id:"T01",pri:"p1",title:"Envolver importBackup em transaction SQL",body:"O restore deleta todos os dados antes de reinserir. Se falhar no meio, o banco fica corrompido sem possibilidade de recuperação.",instr:"Envolver todo o bloco de DELETE + INSERT de confirmAndImportBackup em BEGIN TRANSACTION / COMMIT. Em qualquer exceção, chamar ROLLBACK antes de propagar o erro.",criteria:["Falha de inserção no meio do restore não corrompe dados existentes","Banco fica intacto se o JSON estiver malformado","Teste: restaurar JSON com erro proposital e verificar que dados originais persistem"],files:["src/utils/backupUtils.ts"],deps:[]},
+{id:"T02",pri:"p1",title:"Corrigir auto-reset de tarefas por frequência",body:"O reset atual verifica apenas last_reset_date != today, fazendo tarefa monthly resetar no dia seguinte à conclusão, o que está incorreto.",instr:"Alterar taskRepo.resetRecurring() para chamar isTaskAvailableNow() de scheduleUtils antes de resetar cada tarefa. Tarefas que ainda não estão disponíveis (monthly feita hoje, weekly em dia errado) não devem ser resetadas.",criteria:["Tarefa monthly feita hoje não reseta amanhã","Tarefa weekly reseta apenas no próximo dia da semana configurado","Tarefa daily reseta no dia seguinte normalmente"],files:["src/db/index.ts","src/utils/scheduleUtils.ts"],deps:[]},
+{id:"T03",pri:"p1",title:"Implementar filtro de período no Stats",body:"Cards 'esta semana' e 'este mês' exibem o mesmo valor que o total geral. statsRepo.getSummary() não aceita parâmetro de data.",instr:"Adicionar parâmetro opcional dateFrom: string a statsRepo.getSummary(). Calcular início da semana (segunda-feira) e início do mês com todayISO(). Passar ao repo e adicionar WHERE t.created_at >= ? no SQL. Atualizar tela stats.tsx para passar os dois intervalos.",criteria:["'Esta semana' filtra apenas chamados da semana corrente","'Este mês' filtra apenas chamados do mês corrente","Sem dateFrom, retorna total (comportamento atual preservado)"],files:["src/db/index.ts","app/(tabs)/stats.tsx","src/utils/dateUtils.ts"],deps:[]},
+{id:"T04",pri:"p1",title:"Validar time_from < time_to no TaskModal",body:"TaskModal não valida se o horário de início é anterior ao de fim. isTaskAvailableNow() retorna resultados incorretos com horários invertidos.",instr:"No handleSave do TaskModal, antes de inserir, verificar se time_from < time_to. Exibir mensagem de erro inline (não Alert) caso contrário. Bloquear submissão. Considerar suporte a tarefas noturnas como melhoria futura (fora deste escopo).",criteria:["Exibe erro se time_to <= time_from","Campo de horário com erro recebe destaque visual","Botão salvar fica desabilitado enquanto há erro"],files:["src/modals/TaskModal.tsx"],deps:[]},
+]},
+{id:"p2",label:"Fase 2 — Arquitetura",color:"p2",tasks:[
+{id:"T05",pri:"p2",title:"Adotar usePagination nas telas de chamados",body:"O hook usePagination já está implementado mas não é usado. Cada tela reimplementa ~40 linhas de paginação manual idênticas.",instr:"Refatorar app/(tabs)/index.tsx para usar usePagination passando ticketRepo.getPage como fetcher. Remover estados manuais tickets, page, loading, refreshing, hasMore. Validar que filtros por status e company_id são passados corretamente como deps.",criteria:["Comportamento de paginação idêntico ao atual","Estados manuais removidos da tela","usePagination reutilizável para futuras telas"],files:["app/(tabs)/index.tsx","src/hooks/usePagination.ts"],deps:["T01"]},
+{id:"T06",pri:"p2",title:"Adicionar ON DELETE CASCADE em companies",body:"tickets e tasks não têm CASCADE na FK de companies. O delete de empresa exige lógica manual nas telas para deletar filhos antes.",instr:"Alterar schema em src/db/index.ts para adicionar ON DELETE CASCADE nas FK company_id de tickets e tasks. Como SQLite não suporta ALTER COLUMN, recriar as tabelas com PRAGMA foreign_keys=OFF, copiar dados, drop e rename. Remover lógica de delete manual de config.tsx.",criteria:["DELETE de company apaga automaticamente tickets e tasks relacionados","config.tsx não precisa mais de deletes manuais em cascata","Dados existentes preservados após migração"],files:["src/db/index.ts","app/(tabs)/config.tsx"],deps:[]},
+{id:"T07",pri:"p2",title:"Substituir Date.now() por Crypto.randomUUID()",body:"IDs tk_${Date.now()} e ts_${Date.now()} podem colidir em criações rápidas e causam duplicatas em restore de backup.",instr:"Importar Crypto de expo-crypto (já disponível no SDK 54). Substituir `tk_${Date.now()}` por `tk_${Crypto.randomUUID()}` e equivalente para tasks. Verificar todos os pontos de geração de ID no projeto.",criteria:["IDs são únicos mesmo em criações simultâneas","Backup+restore não gera conflito de IDs","Nenhuma referência a Date.now() para geração de IDs"],files:["src/modals/TicketModal.tsx","src/modals/TaskModal.tsx"],deps:[]},
+{id:"T08",pri:"p2",title:"Adicionar try/catch no parse de schedule_days",body:"schedule_days é serializado como JSON string. Parse sem tratamento silencia erros e faz tarefas weekly funcionarem incorretamente.",instr:"Em scheduleUtils.ts, envolver JSON.parse(task.schedule_days) em try/catch. Em caso de erro, retornar array vazio [] com log de aviso. Adicionar validação equivalente em taskRepo.getByCompany().",criteria:["Parse malformado não lança exceção não tratada","Tarefa com schedule_days inválido é tratada como sem dias configurados","Log de aviso registrado para diagnóstico"],files:["src/utils/scheduleUtils.ts","src/db/index.ts"],deps:[]},
+{id:"T09",pri:"p2",title:"Reportar anexos pulados no backup",body:"exportBackup() silenciosamente ignora arquivos > 1MB. Usuário restaura backup e descobre que anexos faltam sem nenhum aviso.",instr:"Coletar lista de attachments pulados durante export (nome + tamanho). Incluir campo skippedAttachments no JSON de backup e exibir aviso no toast de sucesso: 'X arquivo(s) não incluído(s) por exceder 1MB'.",criteria:["Toast de export lista quantos arquivos foram pulados","Campo skippedAttachments presente no JSON exportado","Export sem arquivos pulados não exibe aviso desnecessário"],files:["src/utils/backupUtils.ts"],deps:["T01"]},
+]},
+{id:"p3",label:"Fase 3 — Performance & robustez",color:"p3",tasks:[
+{id:"T10",pri:"p3",title:"Adicionar índice composto em tickets",body:"Filtros mais comuns são company_id + status + created_at. Índices separados são menos eficientes que um índice composto para esse padrão.",instr:"Em initDatabase(), adicionar CREATE INDEX IF NOT EXISTS idx_tickets_company_status ON tickets(company_id, status, created_at DESC). Remover índices separados de company_id e status se existirem (redundantes).",criteria:["Query com WHERE company_id=? AND status=? usa o índice composto","EXPLAIN QUERY PLAN não mostra full table scan na listagem principal"],files:["src/db/index.ts"],deps:["T06"]},
+{id:"T11",pri:"p3",title:"Fixar dimensões de imagens em AttachmentRow",body:"Image sem width/height explícitos força recálculo de layout em listas longas, causando reflows.",instr:"Em AttachmentRow, definir width={48} height={48} fixos no componente Image de thumbnail. Adicionar resizeMode='cover'. Considerar memoização do componente com React.memo se lista for longa.",criteria:["Thumbnail sempre renderiza com 48x48 sem reflow","Sem re-renders desnecessários ao rolar a lista"],files:["src/components/AttachmentRow.tsx"],deps:[]},
+{id:"T12",pri:"p3",title:"Cachear lista de empresas no Zustand",body:"companies é recarregado toda vez que o dropdown abre, mesmo sendo raramente alterado.",instr:"Adicionar companies: Company[] e loadCompanies() ao appStore. Chamar loadCompanies() no CompanyModal.onClose e no initDatabase. Telas de Chamados e Tarefas consomem do store em vez de recarregar ao abrir dropdown.",criteria:["companies carregado uma vez ao iniciar","Atualizado apenas após criar ou deletar empresa","Sem query ao banco ao abrir dropdown"],files:["src/stores/appStore.ts","app/(tabs)/index.tsx","app/(tabs)/tarefas.tsx","src/modals/CompanyModal.tsx"],deps:[]},
+]},
+{id:"p4",label:"Fase 4 — UX quick wins",color:"p4",tasks:[
+{id:"T13",pri:"p4",title:"Adicionar busca na tela de Tarefas",body:"SearchBar já existe como componente reutilizável. Tela de Tarefas não oferece busca textual, exigindo scroll manual.",instr:"Adicionar estado searchQuery local em tarefas.tsx. Reutilizar componente SearchBar já existente. Filtrar tasks pelo campo name.toLowerCase().includes(query) antes de renderizar. Ícone de lupa no header para toggle.",criteria:["Campo de busca filtra tarefas por nome em tempo real","Limpar busca restaura lista completa","Comportamento idêntico à busca na tela de Chamados"],files:["app/(tabs)/tarefas.tsx"],deps:[]},
+{id:"T14",pri:"p4",title:"Ordenar tarefas: pendentes primeiro",body:"taskRepo.getByCompany() ordena por created_at. Tarefas concluídas ficam misturadas com pendentes, piorando a usabilidade.",instr:"Alterar ORDER BY em taskRepo.getByCompany() para ORDER BY is_done ASC, created_at DESC. Tarefas pendentes (is_done=0) aparecem primeiro, concluídas vão para baixo.",criteria:["Tarefas pendentes sempre aparecem antes das concluídas","Dentro de cada grupo, ordem é da mais recente para mais antiga","Alteração não quebra filtros existentes (rec, one, done)"],files:["src/db/index.ts"],deps:[]},
+{id:"T15",pri:"p4",title:"Implementar undo na exclusão de empresa",body:"showToast suporta onUndo mas handleDeleteCompany não passa callback. Exclusão acidental é irreversível.",instr:"Antes do delete, salvar snapshot completo (empresa + tickets + tasks + timeline + attachments) em variável local. Passar onUndo ao showToast que chama confirmAndImportBackup com o snapshot. Janela de 3.5s para desfazer.",criteria:["Toast de exclusão exibe botão 'DESFAZER'","Clicar desfazer restaura empresa e todos os dados associados","Sem clique, exclusão é confirmada após timeout"],files:["app/(tabs)/config.tsx","src/utils/backupUtils.ts"],deps:["T01","T06"]},
+{id:"T16",pri:"p4",title:"Chips de sugestão no TransitionModal",body:"Técnico frequentemente digita os mesmos comentários. Sem sugestões, cada transição requer digitação manual completa.",instr:"Adicionar array SUGGESTIONS por transição de status (ex: para 'aguardando': ['Aguardando resposta do cliente', 'Aguardando aprovação']). Renderizar como chips horizontais scrolláveis acima do TextInput. Tap no chip preenche o campo.",criteria:["Chips relevantes aparecem de acordo com o status de destino","Tap no chip preenche o TextInput (não envia automaticamente)","Campo ainda permite texto livre sem usar chips"],files:["src/modals/TransitionModal.tsx"],deps:[]},
+{id:"T17",pri:"p4",title:"Corrigir filtro de empresa no período do Stats",body:"Cards 'esta semana' e 'este mês' no Stats ignoram a empresa selecionada, enquanto os demais cards respeitam viewAllCompanies.",instr:"Passar companyId (ou null para todas) ao statsRepo.getSummary() junto com dateFrom. Adicionar WHERE company_id = ? no SQL quando companyId for fornecido. Garantir consistência com os outros cards da tela.",criteria:["'Esta semana' filtra por empresa selecionada","Comportamento consistente entre todos os cards","'Ver todas' no seletor de empresa mostra stats globais"],files:["src/db/index.ts","app/(tabs)/stats.tsx"],deps:["T03"]},
+{id:"T18",pri:"p4",title:"Limitar tamanho de comentários (maxLength 500)",body:"TextInput de comentários não tem limite. Comentários muito longos poluem a timeline sem valor adicional.",instr:"Adicionar maxLength={500} no TextInput de comentário em ticket/[id].tsx e em TransitionModal.tsx. Exibir contador 'X/500' abaixo do campo quando restarem menos de 100 caracteres.",criteria:["Impossível digitar mais de 500 caracteres no comentário","Contador aparece quando restam < 100 chars","Contador some ao limpar o campo"],files:["app/ticket/[id].tsx","src/modals/TransitionModal.tsx"],deps:[]},
+]}
+];
+
+const colorMap={p1:"dot1",p2:"dot2",p3:"dot3",p4:"dot4"};
+
+function render(){
+  const el=document.getElementById('phases');
+  el.innerHTML='';
+  phases.forEach(phase=>{
+    const ph=document.createElement('div');
+    ph.className='phase';
+    ph.innerHTML=`<div class="phase-header">
+      <span class="phase-label ${phase.color}">${phase.label}</span>
+      <span class="phase-count">${phase.tasks.length} tarefas</span>
+    </div>
+    <div class="cards" id="cards-${phase.id}"></div>`;
+    el.appendChild(ph);
+    const grid=ph.querySelector(`#cards-${phase.id}`);
+    phase.tasks.forEach(t=>{
+      const c=document.createElement('div');
+      c.className=`card pri-${t.pri}`;
+      c.dataset.pri=t.pri;
+      c.innerHTML=`
+        <div class="card-top">
+          <div class="pri-dot ${colorMap[t.pri]}"></div>
+          <span class="card-id">${t.id}</span>
+          <span class="card-title">${t.title}</span>
+        </div>
+        <div class="card-body">${t.body}</div>
+        <div class="card-files">
+          <div class="files-label">arquivos</div>
+          ${t.files.map(f=>`<div class="file">${f}</div>`).join('')}
+        </div>
+        <div class="card-detail">
+          <div class="detail-section">
+            <div class="detail-label">instrução para ia</div>
+            <div class="detail-text">${t.instr}</div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">critérios de aceite</div>
+            <ul class="criteria">${t.criteria.map(c=>`<li>${c}</li>`).join('')}</ul>
+          </div>
+          ${t.deps.length?`<div class="detail-section">
+            <div class="detail-label">dependências</div>
+            <div class="dep-tags">${t.deps.map(d=>`<span class="dep">${d}</span>`).join('')}</div>
+          </div>`:''}
+        </div>
+        <div class="expand-hint">${c.classList.contains('open')?'▲ recolher':'▼ ver instruções'}</div>`;
+      c.addEventListener('click',()=>{
+        c.classList.toggle('open');
+        c.querySelector('.expand-hint').textContent=c.classList.contains('open')?'▲ recolher':'▼ ver instruções';
+      });
+      grid.appendChild(c);
+    });
+  });
+}
+
+function filter(pri,btn){
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.card').forEach(c=>{
+    c.classList.toggle('hidden', pri!=='all' && c.dataset.pri!==pri);
+  });
+  document.querySelectorAll('.phase').forEach(ph=>{
+    const visible=[...ph.querySelectorAll('.card')].some(c=>!c.classList.contains('hidden'));
+    ph.style.display=visible?'':'none';
+  });
+}
+
+render();
+</script>

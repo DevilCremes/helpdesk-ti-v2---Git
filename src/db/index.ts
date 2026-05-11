@@ -1,6 +1,8 @@
 import * as SQLite from 'expo-sqlite';
 import * as Crypto from 'expo-crypto';
 import { nowStr, todayISO } from '../utils/dateUtils';
+// ✅ B1 — import estático no topo (era require() dinâmico dentro de loop)
+import { isTaskAvailableNow, TaskSchedule } from '../utils/scheduleUtils';
 
 const db = SQLite.openDatabaseSync('helpdesk_v2.db');
 
@@ -34,10 +36,10 @@ export function initDatabase(): void {
       updated_at   TEXT    NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_tickets_company  ON tickets(company_id);
-    CREATE INDEX IF NOT EXISTS idx_tickets_status   ON tickets(status);
-    CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority);
-    CREATE INDEX IF NOT EXISTS idx_tickets_created  ON tickets(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_tickets_company        ON tickets(company_id);
+    CREATE INDEX IF NOT EXISTS idx_tickets_status         ON tickets(status);
+    CREATE INDEX IF NOT EXISTS idx_tickets_priority       ON tickets(priority);
+    CREATE INDEX IF NOT EXISTS idx_tickets_created        ON tickets(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_tickets_company_status ON tickets(company_id, status);
 
     CREATE TABLE IF NOT EXISTS attachments (
@@ -128,7 +130,7 @@ export interface Task {
 
 // ─── COMPANIES ───────────────────────────────────────────────────────────────
 export const companyRepo = {
-    getAll: (): Company[] => db.getAllSync<Company>('SELECT * FROM companies ORDER BY name'),
+  getAll: (): Company[] => db.getAllSync<Company>('SELECT * FROM companies ORDER BY name'),
 
   getById: (id: number): Company | null =>
     db.getFirstSync<Company>('SELECT * FROM companies WHERE id = ?', [id]) ?? null,
@@ -142,73 +144,81 @@ export const companyRepo = {
     db.runSync('DELETE FROM companies WHERE id = ?', [id]);
   },
 
-  deleteWithCascade: (id: number): void => {
-    // Cascade delete now handled by FK constraint, but kept for compatibility
+  // ✅ S6 — deleteWithCascade removido (era idêntico a delete; CASCADE já é feito pela FK)
+
+  softDelete: (id: number): {
+    company: Company;
+    tickets: any[];
+    tasks: any[];
+    timeline: any[];
+    attachments: any[];
+  } => {
+    const company  = db.getFirstSync<Company>('SELECT * FROM companies WHERE id = ?', [id])!;
+    const tickets  = db.getAllSync('SELECT * FROM tickets WHERE company_id = ?', [id]);
+    const tasks    = db.getAllSync('SELECT * FROM tasks    WHERE company_id = ?', [id]);
+
+    // ✅ A4 — captura timeline e attachments antes de deletar
+    const ticketIds = tickets.map((t: any) => t.id);
+    let timeline: any[]    = [];
+    let attachments: any[] = [];
+    if (ticketIds.length > 0) {
+      const placeholders = ticketIds.map(() => '?').join(',');
+      timeline    = db.getAllSync(`SELECT * FROM timeline    WHERE ticket_id IN (${placeholders})`, ticketIds);
+      attachments = db.getAllSync(`SELECT * FROM attachments WHERE ticket_id IN (${placeholders})`, ticketIds);
+    }
+
     db.runSync('DELETE FROM companies WHERE id = ?', [id]);
+
+    return { company, tickets, tasks, timeline, attachments };
   },
 
-  // Soft delete with backup data for undo
-  softDelete: (id: number): { company: Company; tickets: any[]; tasks: any[] } => {
-    const company = db.getFirstSync<Company>('SELECT * FROM companies WHERE id = ?', [id])!;
-    const tickets = db.getAllSync('SELECT * FROM tickets WHERE company_id = ?', [id]);
-    const tasks = db.getAllSync('SELECT * FROM tasks WHERE company_id = ?', [id]);
+  restore: (data: {
+    company: Company;
+    tickets: any[];
+    tasks: any[];
+    timeline?: any[];
+    attachments?: any[];
+  }): void => {
+    const { company, tickets, tasks, timeline = [], attachments = [] } = data;
 
-    db.runSync('DELETE FROM companies WHERE id = ?', [id]);
-
-    return { company, tickets, tasks };
-  },
-
-  // Restore company with all data
-  restore: (data: { company: Company; tickets: any[]; tasks: any[] }): void => {
-    const { company, tickets, tasks } = data;
-
-    // Restore company
     db.runSync('INSERT INTO companies (id, name, created_at) VALUES (?, ?, ?)', [
-      company.id,
-      company.name,
-      company.created_at,
+      company.id, company.name, company.created_at,
     ]);
 
-    // Restore tickets
     for (const ticket of tickets) {
       db.runSync(
         `INSERT INTO tickets (id, company_id, title, requester, category, priority, status, description, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          ticket.id,
-          ticket.company_id,
-          ticket.title,
-          ticket.requester,
-          ticket.category,
-          ticket.priority,
-          ticket.status,
-          ticket.description,
-          ticket.created_at,
-          ticket.updated_at,
-        ]
+        [ticket.id, ticket.company_id, ticket.title, ticket.requester,
+         ticket.category, ticket.priority, ticket.status, ticket.description,
+         ticket.created_at, ticket.updated_at]
       );
     }
 
-    // Restore tasks
+    // ✅ A4 — restaura timeline
+    for (const entry of timeline) {
+      db.runSync(
+        `INSERT INTO timeline (id, ticket_id, type, text, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [entry.id, entry.ticket_id, entry.type, entry.text, entry.created_at]
+      );
+    }
+
+    // ✅ A4 — restaura attachments (arquivos físicos já estão em disco)
+    for (const att of attachments) {
+      db.runSync(
+        `INSERT INTO attachments (id, ticket_id, name, size, mime_type, local_path, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [att.id, att.ticket_id, att.name, att.size, att.mime_type, att.local_path, att.created_at]
+      );
+    }
+
     for (const task of tasks) {
       db.runSync(
         `INSERT INTO tasks (id, company_id, name, task_type, schedule_type, schedule_days, period_number, time_from, time_to, is_done, last_done_at, last_reset_date, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          task.id,
-          task.company_id,
-          task.name,
-          task.task_type,
-          task.schedule_type,
-          task.schedule_days,
-          task.period_number,
-          task.time_from,
-          task.time_to,
-          task.is_done,
-          task.last_done_at,
-          task.last_reset_date,
-          task.created_at,
-        ]
+        [task.id, task.company_id, task.name, task.task_type, task.schedule_type,
+         task.schedule_days, task.period_number, task.time_from, task.time_to,
+         task.is_done, task.last_done_at, task.last_reset_date, task.created_at]
       );
     }
   },
@@ -308,7 +318,7 @@ export const ticketRepo = {
     companyId: number; title: string; requester: string;
     category: string; priority: string; description?: string;
   }): string => {
-    const id = `tk_${Crypto.randomUUID()}`;
+    const id  = `tk_${Crypto.randomUUID()}`;
     const now = nowStr();
     db.runSync(
       `INSERT INTO tickets (id, company_id, title, requester, category, priority, status, description, created_at, updated_at)
@@ -324,7 +334,7 @@ export const ticketRepo = {
   },
 
   update: (id: string, data: Partial<Omit<Ticket, 'id' | 'company_id' | 'created_at'>>): void => {
-    const now = nowStr();
+    const now    = nowStr();
     const fields: string[] = [];
     const vals: (string | number | null)[] = [];
 
@@ -336,8 +346,7 @@ export const ticketRepo = {
     if (data.description !== undefined) { fields.push('description = ?'); vals.push(data.description); }
 
     fields.push('updated_at = ?');
-    vals.push(now);
-    vals.push(id);
+    vals.push(now, id);
 
     db.runSync(`UPDATE tickets SET ${fields.join(', ')} WHERE id = ?`, vals);
   },
@@ -368,11 +377,12 @@ export const timelineRepo = {
     ),
 
   add: (ticketId: string, type: string, text: string): void => {
+    const now = nowStr();
     db.runSync(
       'INSERT INTO timeline (ticket_id, type, text, created_at) VALUES (?, ?, ?, ?)',
-      [ticketId, type, text, nowStr()]
+      [ticketId, type, text, now]
     );
-    db.runSync('UPDATE tickets SET updated_at = ? WHERE id = ?', [nowStr(), ticketId]);
+    db.runSync('UPDATE tickets SET updated_at = ? WHERE id = ?', [now, ticketId]);
   },
 };
 
@@ -450,7 +460,6 @@ export const taskRepo = {
   },
 
   resetRecurring: (): void => {
-    // Busca todas as tarefas recorrentes concluídas que ainda não foram resetadas hoje
     const tasks = db.getAllSync<Task>(
       `SELECT * FROM tasks
        WHERE task_type = 'rec'
@@ -459,22 +468,18 @@ export const taskRepo = {
       [todayISO()]
     );
 
-    // Para cada tarefa, verifica se está disponível agora conforme sua frequência
+    // ✅ B1 — isTaskAvailableNow agora importado no topo, sem require() dinâmico
     for (const task of tasks) {
       const schedule: TaskSchedule = {
-        task_type: task.task_type,
+        task_type:     task.task_type,
         schedule_type: task.schedule_type,
         schedule_days: task.schedule_days,
         period_number: task.period_number,
-        time_from: task.time_from,
-        time_to: task.time_to,
-        last_done_at: task.last_done_at,
+        time_from:     task.time_from,
+        time_to:       task.time_to,
+        last_done_at:  task.last_done_at,
       };
 
-      // Importação dinâmica para evitar ciclo
-      const { isTaskAvailableNow } = require('../utils/scheduleUtils');
-
-      // Reset apenas se a tarefa estiver disponível agora
       if (isTaskAvailableNow(schedule)) {
         db.runSync(
           'UPDATE tasks SET is_done = 0, last_reset_date = ? WHERE id = ?',
@@ -510,36 +515,23 @@ export const statsRepo = {
       params.push(companyId);
     }
     if (dateFrom) {
-      conditions.push("created_at >= ?");
+      conditions.push('created_at >= ?');
       params.push(dateFrom);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const andClause = conditions.length > 0 ? 'AND' : 'WHERE';
 
-    const total = db.getFirstSync<{ n: number }>(
-      `SELECT COUNT(*) as n FROM tickets ${whereClause}`, params
-    )?.n ?? 0;
-
-    const aberto = db.getFirstSync<{ n: number }>(
-      `SELECT COUNT(*) as n FROM tickets ${whereClause} ${andClause} status = 'aberto'`,
-      [...params]
-    )?.n ?? 0;
-
-    const andamento = db.getFirstSync<{ n: number }>(
-      `SELECT COUNT(*) as n FROM tickets ${whereClause} ${andClause} status = 'andamento'`,
-      [...params]
-    )?.n ?? 0;
-
-    const aguardando = db.getFirstSync<{ n: number }>(
-      `SELECT COUNT(*) as n FROM tickets ${whereClause} ${andClause} status = 'aguardando'`,
-      [...params]
-    )?.n ?? 0;
-
-    const fechado = db.getFirstSync<{ n: number }>(
-      `SELECT COUNT(*) as n FROM tickets ${whereClause} ${andClause} status = 'fechado'`,
-      [...params]
-    )?.n ?? 0;
+    // ✅ A1 — 1 query GROUP BY substitui 5 queries COUNT separadas
+    const statusRows = db.getAllSync<{ status: string; n: number }>(
+      `SELECT status, COUNT(*) as n FROM tickets ${whereClause} GROUP BY status`,
+      params
+    );
+    const counts  = Object.fromEntries(statusRows.map(r => [r.status, r.n]));
+    const aberto    = counts['aberto']     ?? 0;
+    const andamento = counts['andamento']  ?? 0;
+    const aguardando= counts['aguardando'] ?? 0;
+    const fechado   = counts['fechado']    ?? 0;
+    const total     = statusRows.reduce((acc, r) => acc + r.n, 0);
 
     const byCat = db.getAllSync<{ category: string; n: number }>(
       `SELECT category, COUNT(*) as n FROM tickets ${whereClause} GROUP BY category ORDER BY n DESC`,
@@ -555,15 +547,15 @@ export const statsRepo = {
   },
 
   getTaskSummary: (companyId: number | null) => {
-    const where = companyId !== null ? 'WHERE company_id = ?' : '';
+    const where  = companyId !== null ? 'WHERE company_id = ?' : '';
     const params = companyId !== null ? [companyId] : [];
-    const total = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) as n FROM tasks ${where}`, params)?.n ?? 0;
-    const done  = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) as n FROM tasks ${where ? where + ' AND' : 'WHERE'} is_done = 1`, [...params])?.n ?? 0;
+    const total  = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) as n FROM tasks ${where}`, params)?.n ?? 0;
+    const done   = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) as n FROM tasks ${where ? where + ' AND' : 'WHERE'} is_done = 1`, [...params])?.n ?? 0;
     return { total, done };
   },
 };
 
-// ─── AUTO-INIT (executa ao importar o módulo) ────────────────────────────────
+// ─── AUTO-INIT ───────────────────────────────────────────────────────────────
 initDatabase();
 
 export { db };
